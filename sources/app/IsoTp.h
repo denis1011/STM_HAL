@@ -1,3 +1,4 @@
+#include <chrono>
 #include <string_view>
 #include "Can.h"
 
@@ -5,17 +6,8 @@ namespace app
 {
 class ISOTP
 {
-    // max length sizes
     static constexpr const uint16_t MAX_ISOTP_MESSAGE_LENGTH = 4095;
     static constexpr const uint8_t MAX_ISOTP_PAYLOAD_SIZE = 7;
-
-    // PCI Types
-    /*
-       static constexpr const uint8_t PCI_Single_Frame = 0x00;
-       static constexpr const uint8_t PCI_First_Frame = 0x01;
-       static constexpr const uint8_t PCI_Consecutive_Frame = 0x02;
-       static constexpr const uint8_t PCI_Flow_Control = 0x03;
-     */
 
     enum FrameTypes {
         SINGLE_FRAME = 0x00,
@@ -24,38 +16,36 @@ class ISOTP
         FLOW_CONTROL = 0x03
     };
 
-    // Flow Control Status
-    static constexpr const uint8_t FS_Clear_To_Send = 0x00;
-    static constexpr const uint8_t FS_Wait = 0x01;
-    static constexpr const uint8_t FS_Overflow = 0x02;
+    enum FlowControlStatus {
+        FS_Clear_To_Send = 0x00,
+        FS_Wait = 0x01,
+        FS_Overflow = 0x02
+    };
 
     const hal::Can& mInterface;
 
     CanTxMsg mCanTxMsg;
     CanRxMsg mCanRxMsg;
 
-    void send_SF(uint32_t sid, std::string_view message);
-    void send_FF(uint32_t sid, std::string_view message);
-    void send_CF(uint32_t sid, std::string_view message);
-    void send_FC(uint32_t sid, std::string_view message);
-    void receive_SF(std::string_view message);
-    void receive_FF(uint32_t did);
-    void receive_CF(uint32_t did);
-    void delay_ST(uint8_t separationTime);
+    uint32_t mSid;
+    uint32_t mDid;
+    std::chrono::milliseconds mSeperationTime;
+    size_t mBlockSize;
+    size_t mRxMsgLength;
+
+    size_t send_SF(std::string_view message);
+    void send_FF(std::string_view message);
+    size_t send_CF(std::string_view message);
+    void send_FC(const size_t length, const FlowControlStatus& status);
+    bool receive_FC(std::chrono::milliseconds timeout);
+    size_t receive_SF(std::string_view message);
+    size_t receive_FF(std::string_view message);
+    size_t receive_CF(char* buffer, size_t length, std::chrono::milliseconds timeout);
 
 public:
-    ISOTP(const hal::Can& interface);
+    ISOTP(const hal::Can& interface, uint32_t sid, uint32_t did);
 
-    void send_Message(uint32_t sid, std::string_view message);
-    void receive_Message(void);
-};
-
-struct PCI {
-    uint8_t frameType;
-    uint16_t dl;
-    uint8_t seq_number;
-    uint8_t flowControlStatus;
-    uint8_t blockSize;
-    uint8_t minSeparationTime;
+    size_t send_Message(std::string_view message, std::chrono::milliseconds timeout);
+    size_t receive_Message(char* buffer, const size_t length, std::chrono::milliseconds timeout);
 };
 }
