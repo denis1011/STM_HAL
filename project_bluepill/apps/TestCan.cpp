@@ -28,10 +28,11 @@ const os::TaskEndless canTest("Can_Test",
                                   msg.Data[3] = 'i';
                                   msg.Data[4] = 's';
 
-                                  can.send(msg);
+                                  auto ret = can.send(msg);
+
+                                  Trace(ZONE_INFO, "sent on  MainCan %d\r\n", ret);
 
                                   os::ThisTask::sleep(std::chrono::milliseconds(300));
-                                  Trace(ZONE_INFO, "pending %d\r\n", can.messagePending());
 
                                   CanRxMsg rxmsg;
                                   std::memset(&rxmsg, 0, sizeof(rxmsg));

@@ -2,16 +2,13 @@
 /*
  * Copyright (c) 2014-2018 Nils Weiss
  */
-
-#include "unittest.h"
-
 #include <array>
+#include <cstring>
+#include <string>
+#include "unittest.h"
 #include "os_Task.h"
 #include "IsoTp.h"
 #include "Can.h"
-#include <cstring>
-#include <string>
-#include <iostream>
 
 static const int __attribute__((unused)) g_DebugZones = 0; //ZONE_ERROR | ZONE_WARNING | ZONE_VERBOSE | ZONE_INFO;
 
@@ -22,8 +19,7 @@ std::array<CanTxMsg, 100> txBuffArray;
 std::array<CanRxMsg, 100> rxBuffArray;
 size_t txBuffCounter;
 size_t rxBuffCounter;
-CanTxMsg txBuff;
-CanRxMsg rxBuff;
+bool timeOutTest = false;
 
 //--------------------------MOCKING--------------------------
 constexpr const std::array<const hal::Can, hal::Can::__ENUM__SIZE + 1> hal::Factory<hal::Can>::Container;
@@ -46,8 +42,10 @@ bool hal::Can::send(CanTxMsg& msg) const
 
 bool hal::Can::receive(CanRxMsg& msg) const
 {
+    if (timeOutTest) {
+        return false;
+    }
     std::memcpy(&msg, &rxBuffArray[rxBuffCounter++], sizeof(CanRxMsg));
-
     return true;
 }
 //-------------------------TESTCASES-------------------------
@@ -106,8 +104,6 @@ int ut_FirstFrameTest(void)
     app::ISOTP testee(can, 0x7ff, 0x6ff);
     auto result = testee.send_Message(std::string_view("deadbeef", 8), std::chrono::milliseconds(200));
 
-    printf("Anzahl gesendete Bytes = %d \r\n", result);
-
     CHECK(result == 8);
     CHECK(txBuffArray[0].StdId == 0x7ff);
     CHECK(txBuffArray[0].IDE == 0);
@@ -127,6 +123,57 @@ int ut_FirstFrameTest(void)
     CHECK(txBuffArray[1].Data[0] == 0x21);
     CHECK(txBuffArray[1].Data[1] == 'e');
     CHECK(txBuffArray[1].Data[2] == 'f');
+
+    TestCaseEnd();
+}
+
+int ut_FirstFrameIndexTest(void)
+{
+    //============ PREPARE =====================
+    TestCaseBegin();
+
+    memset(txBuffArray.data(), 0, sizeof(txBuffArray));
+    txBuffCounter = 0;
+
+    memset(rxBuffArray.data(), 0, sizeof(rxBuffArray));
+    rxBuffCounter = 0;
+
+    rxBuffArray[0].StdId = 0x6ff;
+    rxBuffArray[0].DLC = 0x3;
+    rxBuffArray[0].Data[0] = 0x30;
+    rxBuffArray[0].Data[1] = 0x00;
+    rxBuffArray[0].Data[2] = 0x00;
+
+    //============ BEGIN TEST =====================
+
+    constexpr const hal::Can& can = hal::Factory<hal::Can>::get<hal::Can::MAINCAN>();
+    app::ISOTP testee(can, 0x7ff, 0x6ff);
+    auto result = testee.send_Message(std::string_view("thatisanindex", 13), std::chrono::milliseconds(200));
+
+    CHECK(result == 13);
+    CHECK(txBuffArray[0].StdId == 0x7ff);
+    CHECK(txBuffArray[0].IDE == 0);
+    CHECK(txBuffArray[0].DLC == 8);
+    CHECK(txBuffArray[0].Data[0] == 0x10);
+    CHECK(txBuffArray[0].Data[1] == 0x0D);
+    CHECK(txBuffArray[0].Data[2] == 't');
+    CHECK(txBuffArray[0].Data[3] == 'h');
+    CHECK(txBuffArray[0].Data[4] == 'a');
+    CHECK(txBuffArray[0].Data[5] == 't');
+    CHECK(txBuffArray[0].Data[6] == 'i');
+    CHECK(txBuffArray[0].Data[7] == 's');
+
+    CHECK(txBuffArray[1].StdId == 0x7ff);
+    CHECK(txBuffArray[1].IDE == 0);
+    CHECK(txBuffArray[1].DLC == 8);
+    CHECK(txBuffArray[1].Data[0] == 0x21);
+    CHECK(txBuffArray[1].Data[1] == 'a');
+    CHECK(txBuffArray[1].Data[2] == 'n');
+    CHECK(txBuffArray[1].Data[3] == 'i');
+    CHECK(txBuffArray[1].Data[4] == 'n');
+    CHECK(txBuffArray[1].Data[5] == 'd');
+    CHECK(txBuffArray[1].Data[6] == 'e');
+    CHECK(txBuffArray[1].Data[7] == 'x');
 
     TestCaseEnd();
 }
@@ -158,13 +205,47 @@ int ut_ReceiveSingleFrame(void)
     constexpr const hal::Can& can = hal::Factory<hal::Can>::get<hal::Can::MAINCAN>();
 
     app::ISOTP testee(can, 0x7ff, 0x6ff);
-
     char buffer[7];
-
     size_t receivedNumberOfBytes = testee.receive_Message(buffer, sizeof(buffer), std::chrono::milliseconds(200));
 
     CHECK(receivedNumberOfBytes == 7);
     CHECK_MEMCMP(buffer, "hello12", 7);
+
+    TestCaseEnd();
+}
+
+int ut_ReceiveFrameFalseId(void)
+{
+    //============ PREPARE =====================
+    TestCaseBegin();
+
+    memset(txBuffArray.data(), 0, sizeof(txBuffArray));
+    txBuffCounter = 0;
+
+    memset(rxBuffArray.data(), 0, sizeof(rxBuffArray));
+    rxBuffCounter = 0;
+
+    rxBuffArray[0].StdId = 0x7ff;
+    rxBuffArray[0].DLC = 0x08;
+    rxBuffArray[0].Data[0] = 0x07;
+    rxBuffArray[0].Data[1] = 'h';
+    rxBuffArray[0].Data[2] = 'e';
+    rxBuffArray[0].Data[3] = 'l';
+    rxBuffArray[0].Data[4] = 'l';
+    rxBuffArray[0].Data[5] = 'o';
+    rxBuffArray[0].Data[6] = '1';
+    rxBuffArray[0].Data[7] = '2';
+
+    //============ BEGIN TEST =====================
+
+    constexpr const hal::Can& can = hal::Factory<hal::Can>::get<hal::Can::MAINCAN>();
+
+    app::ISOTP testee(can, 0x7ff, 0x6ff);
+    char buffer[7];
+    size_t receivedNumberOfBytes = testee.receive_Message(buffer, sizeof(buffer), std::chrono::milliseconds(200));
+
+    CHECK(receivedNumberOfBytes == 0);
+    CHECK_MEMCMP(buffer, "", 1);
 
     TestCaseEnd();
 }
@@ -214,6 +295,8 @@ int ut_ReceiveFirstFrame(void)
     size_t receivedNumberOfBytes = testee.receive_Message(buffer, sizeof(buffer), std::chrono::milliseconds(200));
 
     // check flow control
+    CHECK(txBuffArray[0].StdId == 0x7ff);
+    CHECK(txBuffArray[0].DLC == 3);
     CHECK(txBuffArray[0].Data[0] == 0x30);
     CHECK(txBuffArray[0].Data[1] == 0x01);
     CHECK(txBuffArray[0].Data[2] == 0x01);
@@ -258,7 +341,6 @@ int ut_RunTestWithTwoISOTPObjects(void)
     CHECK(txBuffArray[0].Data[7] == '2');
 
     memcpy(&rxBuffArray[0], &txBuffArray[0], std::min(sizeof(CanRxMsg), sizeof(CanTxMsg)));
-
     char buffer[7];
     size_t NumberOfBytesReceived = isotpEmpfaenger.receive_Message(buffer,
                                                                    sizeof(buffer),
@@ -298,9 +380,7 @@ int ut_ReceiveToLongSingleFrameTest(void)
     constexpr const hal::Can& can = hal::Factory<hal::Can>::get<hal::Can::MAINCAN>();
 
     app::ISOTP testee(can, 0x7ff, 0x6ff);
-
     char buffer[7];
-
     size_t receivedNumberOfBytes = testee.receive_Message(buffer, sizeof(buffer), std::chrono::milliseconds(200));
 
     CHECK(receivedNumberOfBytes == 0);
@@ -347,10 +427,9 @@ int ut_length_Bigger_than_Buffer(void)
 
     constexpr const hal::Can& can = hal::Factory<hal::Can>::get<hal::Can::MAINCAN>();
 
-    app::ISOTP isotpEmpfaenger(can, 0x6ff, 0x7ff);
-
+    app::ISOTP isotpReceiver(can, 0x7ff, 0x6ff);
     char buffer[7];
-    size_t NumberOfBytesReceived = isotpEmpfaenger.receive_Message(buffer, 4, std::chrono::milliseconds(200));
+    size_t NumberOfBytesReceived = isotpReceiver.receive_Message(buffer, 4, std::chrono::milliseconds(200));
 
     // check flow control overflow
     CHECK(txBuffArray[0].Data[0] == 0x32);
@@ -402,12 +481,11 @@ int ut_message_Bigger_than_Buffer(void)
 
     constexpr const hal::Can& can = hal::Factory<hal::Can>::get<hal::Can::MAINCAN>();
 
-    app::ISOTP isotpEmpfaenger(can, 0x6ff, 0x7ff);
-
+    app::ISOTP isotpReceiver(can, 0x7ff, 0x6ff);
     char buffer[8];
-    size_t NumberOfBytesReceived = isotpEmpfaenger.receive_Message(buffer,
-                                                                   sizeof(buffer),
-                                                                   std::chrono::milliseconds(200));
+    size_t NumberOfBytesReceived = isotpReceiver.receive_Message(buffer,
+                                                                 sizeof(buffer),
+                                                                 std::chrono::milliseconds(200));
 
     // check flow control overflow
     CHECK(txBuffArray[0].Data[0] == 0x32);
@@ -420,11 +498,14 @@ int ut_message_Bigger_than_Buffer(void)
     TestCaseEnd();
 }
 
-int ut_TimeoutSingleFrame(void)
+int ut_Timeout(void)
 {
     //============ PREPARE =====================
     TestCaseBegin();
-
+    uint32_t startTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                               std::chrono::high_resolution_clock::now().time_since_epoch())
+                         .count();
+    timeOutTest = true;
     memset(txBuffArray.data(), 0, sizeof(txBuffArray));
     txBuffCounter = 0;
 
@@ -447,14 +528,17 @@ int ut_TimeoutSingleFrame(void)
     constexpr const hal::Can& can = hal::Factory<hal::Can>::get<hal::Can::MAINCAN>();
 
     app::ISOTP testee(can, 0x7ff, 0x6ff);
-
     char buffer[7];
+    size_t receivedNumberOfBytes = testee.receive_Message(buffer, sizeof(buffer), std::chrono::milliseconds(10));
+    uint32_t currentTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                                                                 std::chrono::high_resolution_clock::now().time_since_epoch())
+                           .count();
 
-    size_t receivedNumberOfBytes = testee.receive_Message(buffer, sizeof(buffer), std::chrono::milliseconds(200));
-
+    CHECK((currentTime - startTime) >= 10);
     CHECK(receivedNumberOfBytes == 0);
     CHECK_MEMCMP(buffer, "", 1);
 
+    timeOutTest = false;
     TestCaseEnd();
 }
 
@@ -465,10 +549,12 @@ int main(int argc, const char* argv[])
     RunTest(true, ut_FirstFrameTest);
     RunTest(true, ut_ReceiveSingleFrame);
     RunTest(true, ut_ReceiveFirstFrame);
+    RunTest(true, ut_ReceiveFrameFalseId);
+    RunTest(true, ut_FirstFrameIndexTest);
     RunTest(true, ut_RunTestWithTwoISOTPObjects);
     RunTest(true, ut_ReceiveToLongSingleFrameTest);
     RunTest(true, ut_length_Bigger_than_Buffer);
     RunTest(true, ut_message_Bigger_than_Buffer);
-    // RunTest(true, ut_TimeoutSingleFrame);
+    RunTest(true, ut_Timeout);
     UnitTestMainEnd();
 }

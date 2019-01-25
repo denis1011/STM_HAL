@@ -27,7 +27,7 @@ static constexpr const std::array<const Can, Can::__ENUM__SIZE + 1> Container =
 { {
       Can(Can::MAINCAN,
           CAN1_BASE,
-          CAN_InitTypeDef { 1, CAN_Mode_LoopBack, CAN_SJW_1tq, CAN_BS1_4tq, CAN_BS2_3tq, DISABLE, DISABLE,
+          CAN_InitTypeDef { 9, CAN_Mode_Normal, CAN_SJW_1tq, CAN_BS1_13tq, CAN_BS2_2tq, DISABLE, DISABLE,
                             DISABLE, DISABLE, DISABLE, DISABLE}),
       Can(Can::__ENUM__SIZE, 0, CAN_InitTypeDef { 0, 0, 0, 0, 0, DISABLE, DISABLE,
                                                   DISABLE, DISABLE, DISABLE, DISABLE})
